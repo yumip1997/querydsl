@@ -291,6 +291,144 @@ List<String> result = query.select(
 - 1:N 페치조인 + 페이징은 메모리에서 처리됨
 - 복잡한 쿼리보다는 단순하고 명확하게 작성
 
+## 📤 프로젝션 (Projection)
+
+### 단순 프로젝션
+```java
+// 단일 필드 조회
+List<String> result = query.select(member.username)
+        .from(member)
+        .fetch();
+
+// 여러 필드를 Tuple로 조회
+List<Tuple> result = query.select(member.username, member.age)
+        .from(member)
+        .fetch();
+
+for (Tuple tuple : result) {
+    String username = tuple.get(member.username);
+    Integer age = tuple.get(member.age);
+}
+```
+
+## 📦 DTO 매핑 방법
+
+### 1. JPQL 생성자 방식
+```java
+// JPQL로 DTO 조회 (패키지명 포함한 긴 문법)
+List<MemberDto> resultList = em.createQuery(
+        "select new com.example.demo.dto.MemberDto(m.username, m.age) " +
+        "from Member m", MemberDto.class)
+        .getResultList();
+```
+
+### 2. QueryDSL Projections.bean() - Setter 사용
+```java
+// Setter를 통한 주입 (기본 생성자 + Setter 필요)
+List<MemberDto> resultList = query.select(
+        Projections.bean(MemberDto.class,
+                member.username,
+                member.age))
+        .from(member)
+        .fetch();
+```
+
+### 3. QueryDSL Projections.fields() - 필드 직접 주입
+```java
+// 필드에 직접 값 주입 (private 필드도 가능)
+List<MemberDto> resultList = query.select(
+        Projections.fields(MemberDto.class,
+                member.username,
+                member.age))
+        .from(member)
+        .fetch();
+```
+
+### 4. QueryDSL Projections.constructor() - 생성자 사용
+```java
+// 생성자를 통한 주입
+List<MemberDto> resultList = query.select(
+        Projections.constructor(MemberDto.class,
+                member.username,
+                member.age))
+        .from(member)
+        .fetch();
+
+// 별칭이 다른 DTO 매핑 (서브쿼리와 함께)
+QMember memberSub = new QMember("memberSub");
+List<UserDto> result = query.select(
+        Projections.constructor(UserDto.class,
+                member.username.as("name"),  // 별칭 사용
+                ExpressionUtils.as(
+                        JPAExpressions.select(memberSub.age.max())
+                                .from(memberSub), "age")))
+        .from(member)
+        .fetch();
+```
+
+### 5. @QueryProjection 활용 (권장) 🌟
+```java
+// 가장 안전한 방법! 컴파일 타임에 오류 검출
+// DTO에 @QueryProjection 애노테이션을 생성자에 추가 후 빌드
+List<MemberDto> resultList = query.select(
+        new QMemberDto(member.username, member.age))  // Q클래스 생성됨
+        .from(member)
+        .fetch();
+```
+
+### 장단점 비교
+| 방법 | 장점 | 단점 |
+|------|------|------|
+| JPQL | 표준 | 문자열 기반, 런타임 오류 |
+| Projections.bean | Setter 재활용 | 기본 생성자 + Setter 필수 |
+| Projections.fields | 간단함 | 필드명 일치 필요 |
+| Projections.constructor | 생성자 재활용 | 타입 순서 일치 필요 |
+| @QueryProjection | **컴파일 타임 안전** | QueryDSL 의존성 |
+
+## 🔄 동적 쿼리
+
+### BooleanBuilder 활용
+```java
+// 동적 조건 생성
+public List<Member> searchMember(String username, Integer age) {
+    BooleanBuilder builder = new BooleanBuilder();
+    
+    if (username != null) {
+        builder.and(member.username.eq(username));
+    }
+    
+    if (age != null) {
+        builder.and(member.age.eq(age));
+    }
+    
+    return query.selectFrom(member)
+            .where(builder)  // 동적 조건 적용
+            .fetch();
+}
+
+// 사용 예시
+List<Member> result1 = searchMember("member1", 10);  // 두 조건 모두
+List<Member> result2 = searchMember(null, 10);       // 나이만
+List<Member> result3 = searchMember("member1", null); // 이름만
+```
+
+### 동적 쿼리 활용 패턴
+```java
+// 초기값을 가진 BooleanBuilder
+BooleanBuilder builder = new BooleanBuilder(member.age.gt(0)); // 기본 조건
+
+// 선택적 조건 추가
+if (StringUtils.hasText(username)) {
+    builder.and(member.username.contains(username));
+}
+if (minAge != null) {
+    builder.and(member.age.goe(minAge));
+}
+if (maxAge != null) {
+    builder.and(member.age.loe(maxAge));
+}
+```
+
 ## 🎯 자주 사용하는 패턴
 ```java
 // 기본 조회 + 조건
@@ -315,4 +453,22 @@ List<Member> content = query.selectFrom(member)
 Long total = query.select(member.count())
         .from(member)
         .fetchOne();
+
+// DTO 조회 + 동적 쿼리
+public List<MemberDto> searchMemberDto(String username, Integer minAge) {
+    BooleanBuilder builder = new BooleanBuilder();
+    
+    if (StringUtils.hasText(username)) {
+        builder.and(member.username.contains(username));
+    }
+    if (minAge != null) {
+        builder.and(member.age.goe(minAge));
+    }
+    
+    return query.select(new QMemberDto(member.username, member.age))
+            .from(member)
+            .where(builder)
+            .orderBy(member.username.asc())
+            .fetch();
+}
 ```

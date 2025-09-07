@@ -1,10 +1,16 @@
 package com.example.demo;
 
+import com.example.demo.dto.MemberDto;
+import com.example.demo.dto.QMemberDto;
+import com.example.demo.dto.UserDto;
 import com.example.demo.entity.Member;
 import com.example.demo.entity.QMember;
 import com.example.demo.entity.Team;
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.NonUniqueResultException;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
@@ -417,4 +423,149 @@ public class BasicTest {
         }
     }
 
+    @Test
+    public void simpleProjection(){
+        List<String> result = query.select(member.username)
+                .from(member)
+                .fetch();
+
+        for (String s : result) {
+            System.out.println(s);
+        }
+    }
+
+    @Test
+    public void tupleProjection(){
+        List<Tuple> result = query.select(member.username, member.age)
+                .from(member)
+                .fetch();
+
+        for (Tuple tuple : result) {
+            String username = tuple.get(member.username);
+            Integer age = tuple.get(member.age);
+
+            System.out.println("username: " + username);
+            System.out.println("age: " + age);
+        }
+    }
+
+    @Test
+    public void findDtoByJPQL(){
+        List<MemberDto> resultList = em.createQuery(
+                "select " +
+                        "new com.example.demo.dto.MemberDto(m.username, m.age) " +
+                        "from Member m", MemberDto.class
+        ).getResultList();
+
+
+        for (MemberDto memberDto : resultList) {
+            System.out.println("username: " + memberDto.getUsername());
+            System.out.println("age: " + memberDto.getAge());
+        }
+    }
+
+    @Test
+    public void findDtoBySQLSetter() {
+        List<MemberDto> resultList = query.select(Projections.bean(MemberDto.class,
+                        member.username,
+                        member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : resultList) {
+            System.out.println("username: " + memberDto.getUsername());
+            System.out.println("age: " + memberDto.getAge());
+        }
+    }
+
+    @Test
+    public void findDtoBySQLField() {
+        List<MemberDto> resultList = query.select(Projections.fields(MemberDto.class,
+                        member.username,
+                        member.age))
+                .from(member)
+                .fetch();
+        for (MemberDto memberDto : resultList) {
+            System.out.println("username: " + memberDto.getUsername());
+            System.out.println("age: " + memberDto.getAge());
+        }
+    }
+
+    @Test
+    public void findDtoBySQLConstructor() {
+        List<MemberDto> resultList = query.select(Projections.constructor(MemberDto.class,
+                        member.username,
+                        member.age))
+                .from(member)
+                .fetch();
+        for (MemberDto memberDto : resultList) {
+            System.out.println("username: " + memberDto.getUsername());
+            System.out.println("age: " + memberDto.getAge());
+        }
+    }
+
+    @Test
+    public void findUserDtoBySQLConstructor() {
+        QMember memberSub = new QMember("memberSub");
+        List<UserDto> resultList = query.select(Projections.constructor(UserDto.class,
+                        member.username.as("name"),
+                        ExpressionUtils.as(JPAExpressions
+                                .select(memberSub.age.max())
+                                .from(memberSub), "age")))
+                .from(member)
+                .fetch();
+
+        for (UserDto userDto : resultList) {
+            System.out.println("username: " + userDto.getName());
+            System.out.println("age: " + userDto.getAge());
+        }
+    }
+
+    @Test
+    public void findDtoByQueryProjection() {
+        // projection 방식보다 안전 이상한 필드 추가 시 컴파일 시점에 오류를 잡아낼 수 있기 때문
+        // 실무에서 가장 많이 사용되긴 하지만 MemberDto가 querydsl에 의존적이게 돔
+        List<MemberDto> resultList = query.select
+                        (new QMemberDto(member.username, member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : resultList) {
+            System.out.println("username: " + memberDto.getUsername());
+            System.out.println("age: " + memberDto.getAge());
+        }
+    }
+
+    @Test
+    public void dynamicQuery_BooleanBuilder(){
+        String usernameParm = "member1";
+        Integer ageParm = 10;
+
+        List<Member> members = searchMember1(usernameParm, ageParm);
+        assertThat(members.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void dynamicQuery2_BooleanBuilder(){
+        String usernameParm =null;
+        Integer ageParm = 10;
+
+        List<Member> members = searchMember1(usernameParm, ageParm);
+        assertThat(members.size()).isEqualTo(1);
+    }
+
+    public List<Member> searchMember1(String usernameCon, Integer ageCond){
+        BooleanBuilder builder = new BooleanBuilder();
+        if(usernameCon != null){
+            builder.and(member.username.eq(usernameCon));
+        }
+
+        if(ageCond != null){
+            builder.and(member.age.eq(ageCond));
+        }
+
+        return query.selectFrom(member)
+                .where(builder)
+                .fetch();
+    }
 }
