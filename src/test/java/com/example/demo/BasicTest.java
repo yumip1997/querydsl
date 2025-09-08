@@ -10,7 +10,9 @@ import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.NonUniqueResultException;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
@@ -567,5 +569,35 @@ public class BasicTest {
         return query.selectFrom(member)
                 .where(builder)
                 .fetch();
+    }
+
+    @Test
+    public void dynamicQuery2_BooleanBuilder2(){
+        String nameParm = "member1";
+        Integer ageParm = null;
+
+        List<Member> members = searchMember2(nameParm, ageParm);
+        assertThat(members.size()).isEqualTo(1);
+    }
+
+    public List<Member> searchMember2(String usernameCon, Integer ageCond){
+        return query
+                .selectFrom(member)
+                .where(allEq(usernameCon, ageCond))
+                .fetch();
+    }
+
+    private BooleanExpression usernameEq(String usernameCon) {
+        return usernameCon == null ? null : member.username.eq(usernameCon);
+
+    }
+
+    private BooleanExpression ageEq(Integer ageCond) {
+        return ageCond == null ? null : member.age.eq(ageCond);
+    }
+
+    // Expressions.allOf -> 매개변수들은 꼭 null 처리를 해둔 BooleanExpression 이어야함
+    private BooleanExpression allEq(String usernameCon, Integer ageCond){
+        return Expressions.allOf(usernameEq(usernameCon), ageEq(ageCond));
     }
 }

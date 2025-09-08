@@ -412,22 +412,36 @@ List<Member> result2 = searchMember(null, 10);       // 나이만
 List<Member> result3 = searchMember("member1", null); // 이름만
 ```
 
-### 동적 쿼리 활용 패턴
+### BooleanExpression 메서드 활용 (권장) 🌟
 ```java
-// 초기값을 가진 BooleanBuilder
-BooleanBuilder builder = new BooleanBuilder(member.age.gt(0)); // 기본 조건
+// 깔끔한 동적 쿼리
+public List<Member> searchMember2(String username, Integer age) {
+    return query.selectFrom(member)
+            .where(allEq(username, age))  // null 조건 자동 무시
+            .fetch();
+}
 
-// 선택적 조건 추가
-if (StringUtils.hasText(username)) {
-    builder.and(member.username.contains(username));
+// Expressions.allOf를 활용한 조건 조합 (null 자동 처리)
+private BooleanExpression allEq(String usernameCond, Integer ageCond) {
+    return Expressions.allOf(usernameEq(usernameCond), ageEq(ageCond));
 }
-if (minAge != null) {
-    builder.and(member.age.goe(minAge));
+
+// null 안전한 조건 메서드들
+private BooleanExpression usernameEq(String usernameCond) {
+    return usernameCond == null ? null : member.username.eq(usernameCond);
 }
-if (maxAge != null) {
-    builder.and(member.age.loe(maxAge));
+
+private BooleanExpression ageEq(Integer ageCond) {
+    return ageCond == null ? null : member.age.eq(ageCond);
 }
+
 ```
+
+### BooleanExpression 장점
+- **조건 재사용**: `usernameEq()` 메서드를 다른 쿼리에서도 활용
+- **가독성 향상**: 복잡한 조건을 메서드명으로 표현  
+- **null 안전**: `Expressions.allOf()`가 null 조건을 자동으로 필터링 -> 매개변수로 null 처리가 된 BooleanExpression 필수 (매개변수가 null이면 null을 반환 그렇지 않으면 BooleanExpression 반환)
+- **조합 가능**: 여러 조건 메서드를 조합해서 복잡한 동적 쿼리 구성
 
 ## 🎯 자주 사용하는 패턴
 ```java
@@ -455,20 +469,22 @@ Long total = query.select(member.count())
         .fetchOne();
 
 // DTO 조회 + 동적 쿼리
-public List<MemberDto> searchMemberDto(String username, Integer minAge) {
-    BooleanBuilder builder = new BooleanBuilder();
-    
-    if (StringUtils.hasText(username)) {
-        builder.and(member.username.contains(username));
-    }
-    if (minAge != null) {
-        builder.and(member.age.goe(minAge));
-    }
-    
-    return query.select(new QMemberDto(member.username, member.age))
-            .from(member)
-            .where(builder)
-            .orderBy(member.username.asc())
+public List<Member> searchMember2(String username, Integer age) {
+    return query.selectFrom(member)
+            .where(allEq(username, age))  // null 조건 자동 무시
             .fetch();
+}
+
+private BooleanExpression allEq(String usernameCond, Integer ageCond) {
+    return Expressions.allOf(usernameEq(usernameCond), ageEq(ageCond));
+}
+
+// null 안전한 조건 메서드들
+private BooleanExpression usernameEq(String usernameCond) {
+    return usernameCond == null ? null : member.username.eq(usernameCond);
+}
+
+private BooleanExpression ageEq(Integer ageCond) {
+    return ageCond == null ? null : member.age.eq(ageCond);
 }
 ```
