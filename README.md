@@ -488,3 +488,68 @@ private BooleanExpression ageEq(Integer ageCond) {
     return ageCond == null ? null : member.age.eq(ageCond);
 }
 ```
+
+## 🔄 벌크 연산 (Bulk Operations)
+
+### ⚠️ 벌크 연산의 주의사항
+벌크 연산은 **영속성 컨텍스트를 거치지 않고 직접 DB에 쿼리를 실행**합니다. 따라서 영속성 컨텍스트와 DB 간의 데이터 불일치가 발생할 수 있습니다.
+
+### 잘못된 벌크 연산 예시 ❌
+```java
+@Test
+void bulkUpdate() {
+    // 벌크 업데이트 실행 (영속성 컨텍스트 무시하고 DB 직접 수정)
+    query.update(member)
+            .set(member.username, "비회원")
+            .where(member.age.lt(20))
+            .execute();
+
+    // 조회 시 영속성 컨텍스트의 기존 값을 반환 (DB 변경사항 반영 안됨)
+    List<Member> resultList = query.selectFrom(member)
+            .fetch();
+
+    // ❌ DB에서는 "비회원"으로 변경되었지만, 영속성 컨텍스트의 기존 값 출력
+    for (Member member : resultList) {
+        System.out.println("username: " + member.getUsername()); // member1, member2 출력
+    }
+}
+```
+
+### 올바른 벌크 연산 예시 ✅
+```java
+@Test
+void bulkUpdate2() {
+    // 벌크 업데이트 실행
+    query.update(member)
+            .set(member.username, "비회원")
+            .where(member.age.lt(20))
+            .execute();
+
+    List<Member> resultList = query.selectFrom(member)
+            .fetch();
+
+    // ✅ 벌크 연산 후 영속성 컨텍스트와 DB 데이터 동기화를 위해 필요
+    // 벌크 연산은 영속성 컨텍스트를 거치지 않고 직접 DB에 쿼리를 실행하므로
+    // 영속성 컨텍스트에 남아있는 기존 엔티티들과 실제 DB 상태가 불일치 상태가 됨
+    // flush(): 영속성 컨텍스트의 변경 내용을 DB에 반영
+    // clear(): 영속성 컨텍스트를 초기화하여 이후 조회 시 DB에서 최신 데이터를 가져옴
+    em.flush();
+    em.clear();
+
+    // ✅ 이제 DB의 최신 데이터 출력
+    for (Member member : resultList) {
+        System.out.println("username: " + member.getUsername()); // "비회원" 출력
+    }
+}
+```
+
+### 벌크 연산 베스트 프랙티스
+1. **벌크 연산 후 항상 `em.flush()`와 `em.clear()` 호출**
+2. **벌크 연산은 트랜잭션 시작 직후나 끝나기 직전에 실행**
+3. **벌크 연산 후에는 영속성 컨텍스트의 엔티티 사용 주의**
+4. **대량 데이터 처리 시에만 사용 (소량은 일반적인 dirty checking 활용)**
+
+### 💡 핵심 포인트
+- 벌크 연산은 **성능상 이점**이 있지만 **영속성 컨텍스트 동기화 문제** 주의
+- **`flush()` + `clear()`**는 벌크 연산 후 필수 작업
+- JPA의 1차 캐시와 변경 감지 기능이 무시되므로 신중하게 사용

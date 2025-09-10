@@ -600,4 +600,45 @@ public class BasicTest {
     private BooleanExpression allEq(String usernameCon, Integer ageCond){
         return Expressions.allOf(usernameEq(usernameCon), ageEq(ageCond));
     }
+
+    // 영속성 컨텍스트에 값이 있으면 디비에서 읽었어도 영속성 컨텍스의 값을 유지
+    @Test
+    void bulkUpdate(){
+        query.update(member)
+                .set(member.username, "비회원")
+                .where(member.age.lt(20))
+                .execute();
+
+        List<Member> resultList = query.selectFrom(member)
+                .fetch();
+
+        // DB와 값이 맞지 않음! 영속성 컨텍스트의 값을 가져오기 때문
+        for (Member member : resultList) {
+            System.out.println("username: " + member.getUsername());
+        }
+    }
+
+
+    @Test
+    void bulkUpdate2(){
+        query.update(member)
+                .set(member.username, "비회원")
+                .where(member.age.lt(20))
+                .execute();
+
+        List<Member> resultList = query.selectFrom(member)
+                .fetch();
+
+        // 벌크 연산 후 영속성 컨텍스트와 DB 데이터 동기화를 위해 필요
+        // 벌크 연산은 영속성 컨텍스트를 거치지 않고 직접 DB에 쿼리를 실행하므로
+        // 영속성 컨텍스트에 남아있는 기존 엔티티들과 실제 DB 상태가 불일치 상태가 됨
+        // flush(): 영속성 컨텍스트의 변경 내용을 DB에 반영
+        // clear(): 영속성 컨텍스트를 초기화하여 이후 조회 시 DB에서 최신 데이터를 가져옴
+        em.flush();
+        em.clear();
+
+        for (Member member : resultList) {
+            System.out.println("username: " + member.getUsername());
+        }
+    }
 }
